@@ -4,6 +4,7 @@ const { Api } = require("telegram");
 const fs = require("fs");
 const { error } = require("console");
 const { message } = require("telegram/client");
+const { processImageUpload } = require("../utils/imageOptimizer");
 
 exports.uploadFile = async (req, res) => {
     const client = getClient();
@@ -12,6 +13,22 @@ exports.uploadFile = async (req, res) => {
     }
 
     const file = req.file;
+    let optimizedUrls = {};
+    
+    // Process image optimization for image files
+    if (file.mimetype.startsWith('image/')) {
+        try {
+            const { optimizedPath, thumbnailPath } = await processImageUpload(file.path, file.originalname);
+            optimizedUrls = {
+                optimizedUrl: `/${optimizedPath}`,
+                thumbnailUrl: `/${thumbnailPath}`
+            };
+        } catch (error) {
+            console.error('Image optimization failed:', error);
+            // Continue without optimization if it fails
+        }
+    }
+
     const result = await client.sendFile(
         "me",
         {
@@ -26,10 +43,12 @@ exports.uploadFile = async (req, res) => {
         mimeType: req.file.mimetype,
     });
     fs.unlinkSync(req.file.path);
+    
     res.json({
         success: true,
         telegramMessageId: result.id,
         fileName: file.originalname,
+        ...optimizedUrls
     });
 };
 exports.getFiles=async (req,res)=>{
@@ -41,7 +60,12 @@ exports.getFiles=async (req,res)=>{
             fileName:file.fileName,
             mimeType:file.mimeType,
             uploadedAt:file.createdAt,
-            viewUrl:`/files/view/${file._id}`
+            viewUrl:`/files/view/${file._id}`,
+            // Include optimized URLs for images
+            ...(file.mimeType.startsWith('image/') && {
+                optimizedUrl: `/uploads/optimized/${file.fileName.replace(/\.[^/.]+$/, '.jpg')}`,
+                thumbnailUrl: `/uploads/thumb/${file.fileName.replace(/\.[^/.]+$/, '.jpg')}`
+            })
         }));
         res.json({
             success:true,
