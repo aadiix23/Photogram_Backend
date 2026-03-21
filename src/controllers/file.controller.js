@@ -2,6 +2,8 @@ const { getClient } = require("../config/telegram");
 const File = require("../models/File")
 const { Api } = require("telegram");
 const fs = require("fs");
+const path = require("path");
+const sharp = require("sharp");
 const { error } = require("console");
 const { message } = require("telegram/client");
 
@@ -11,25 +13,42 @@ exports.uploadFile = async (req, res) => {
         return res.status(400).json({ error: "No file uploaded" });
     }
 
-    const file = req.file;
+    let file = req.file;
+    let fileName = file.originalname;
+    let mimeType = file.mimetype;
+
+    // Convert to webp if it's an image
+    if (mimeType.startsWith("image/")) {
+        const webpPath = file.path + ".webp";
+        await sharp(file.path)
+            .webp()
+            .toFile(webpPath);
+        
+        // Delete original file and update reference to the webp version
+        fs.unlinkSync(file.path);
+        file.path = webpPath;
+        fileName = path.parse(file.originalname).name + ".webp";
+        mimeType = "image/webp";
+    }
+
     const result = await client.sendFile(
         "me",
         {
             file: file.path,
-            caption: file.originalname,
+            caption: fileName,
         }
     );
     const savedFile = await File.create({
         userPhone: req.user.phone,
         telegramMessageId: result.id,
-        fileName: req.file.originalname,
-        mimeType: req.file.mimetype,
+        fileName: fileName,
+        mimeType: mimeType,
     });
-    fs.unlinkSync(req.file.path);
+    fs.unlinkSync(file.path);
     res.json({
         success: true,
         telegramMessageId: result.id,
-        fileName: file.originalname,
+        fileName: fileName,
     });
 };
 exports.getFiles=async (req,res)=>{
