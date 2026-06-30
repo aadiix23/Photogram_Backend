@@ -98,3 +98,23 @@ exports.viewFile=async(req,res)=>{
         
     }
 };
+
+exports.deleteFile=async(req,res)=>{
+    try {
+        const client=getClient();
+        const fileId=req.params.id;
+        const file=await File.findById(fileId);
+        if(!file){
+            return res.status(404).json({error:"File Not Found"});
+        }
+        if(file.userPhone!==req.user.phone){
+            return res.status(403).json({error:"Forbidden"});
+        }
+        await client.deleteMessages("me", [file.telegramMessageId], { revoke: true });
+        await File.deleteOne({ _id: fileId });
+        res.json({ success: true, message: "File deleted" });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: err.message });
+    }
+};
